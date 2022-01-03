@@ -12,87 +12,93 @@ library(stringr)
 ############## Get Argument ##############
 Args <- commandArgs(trailingOnly = T)
 
-# Args <- paste0('time Rscript khyPipeline.R',' -Fa http://ftp.ensembl.org/pub/release-105/fasta/gallus_gallus/dna/",Spc,".GRCg6a.dna.toplevel.fa.gz',
-#                ' -Gtf http://ftp.ensembl.org/pub/release-105/gtf/gallus_gallus/Gallus_gallus.GRCg6a.105.gtf.gz',
-#                ' -Spc Gallus_gallus -Input /disk4/ -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar ',
-#                 '-End PE -t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc ',
-#                 '-HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools ',
-#                 '-Featurecount /program/subread/bin/featureCounts')
+ # Args <- paste0('time Rscript khyPipeline.R',' -Fa http://ftp.ensembl.org/pub/release-105/fasta/gallus_gallus/dna/gallus_gallus.GRCg6a.dna.toplevel.fa.gz',
+ #                ' -Gtf http://ftp.ensembl.org/pub/release-105/gtf/gallus_gallus/Gallus_gallus.GRCg6a.105.gtf.gz',
+ #                ' -Spc Gallus_gallus -Input /disk4/bikhy/oneSampleTest -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar ',
+ #                 '-End PE --t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc ',
+ #                 '-HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools ',
+ #                 '-Featurecount /program/subread/bin/featureCounts')
+ #Args <- unlist(strsplit(Args,' '))
+ 
+# Args <- 'time Rscript khyPipeline.R -Input /disk4/bikhy/SRRdata -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar -End PE --t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc -HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools -Featurecount /program/subread/bin/featureCounts'
 # Args <- unlist(strsplit(Args,' '))
 
-if(!which(Args=='-Fa')){
+if(!'-Fa' %in% Args){
   print('no Fa !')
 }else{
   referenceLink <- Args[which(Args=='-Fa')+1]
 }
 
-if(!which(Args=='-Gtf')){
+if(!'-Gtf' %in% Args){
   print('no Gtf !')
 }else{
   GeneLink <- Args[which(Args=='-Gtf')+1]
 }
 
-if(!which(Args=='-Spc')){
+if(!'-Spc' %in% Args){
   print('no Spc !')
 }else{
   species <- Args[which(Args=='-Spc')+1]
 }
 
-if(!which(Args=='-Input')){
+if(!'-Input' %in% Args){
   print('no Input !')
 }else{
   inputfileLoc <- Args[which(Args=='-Input')+1]
 }
 
-if(!which(Args=='-Base')){
+if(!'-Base' %in% Args){
   print('no Base !')
 }else{
   baseLoc <- Args[which(Args=='-Base')+1]
 }
 
-if(!which(Args=='-Trim')){
+if(!'-Trim' %in% Args){
   print('no Trim !')
 }else{
   TrimPrgmLoc <- Args[which(Args=='-Trim')+1]
 }
 
-if(!which(Args=='-End')){
+if(!'-End' %in% Args){
   print('no End !')
 }else{
   Endtype <- Args[which(Args=='-End')+1]
 }
 
-if(!which(Args=='-t')){
-  print('no t !')
+if(!'--t' %in% Args){
+  thread=NULL
+  CPUCMD <- paste0("top -n 1 -b| grep -i cpu\\(s\\)| awk \'{print $8}\'")
+  Current_CPU_remain <- system(CPUCMD,intern=T)
+  Current_CPU_remain_n <- as.numeric(Current_CPU_remain)
 }else{
-  thread <- Args[which(Args=='-t')+1]
+  thread <- Args[which(Args=='--t')+1]
 }
 
-if(!which(Args=='-Adapt')){
+if(!'-Adapt' %in% Args){
   print('no Adapt !')
 }else{
   AdapterLoc <- Args[which(Args=='-Adapt')+1]
 }
 
-if(!which(Args=='-QC')){
+if(!'-QC' %in% Args){
   print('no QC !')
 }else{
   QCPrgmLoc <- Args[which(Args=='-QC')+1]
 }
 
-if(!which(Args=='-HISAT')){
+if(!'-HISAT' %in% Args){
   print('no HISAT !')
 }else{
   HISATPrgmLoc <- Args[which(Args=='-HISAT')+1]
 }
 
-if(!which(Args=='-Samtool')){
+if(!'-Samtool' %in% Args){
   print('no Samtool !')
 }else{
   SamtoolPrgmLoc <- Args[which(Args=='-Samtool')+1]
 }
 
-if(!which(Args=='-Featurecount')){
+if(!'-Featurecount' %in% Args){
   print('no Featurecount !')
 }else{
   FeatureCountPrgmLoc <- Args[which(Args=='-Featurecount')+1]
@@ -101,93 +107,222 @@ if(!which(Args=='-Featurecount')){
 ####################### Set Working Directory #######################
 setwd(baseLoc)
 
-####################### Download reference file & gene annotation file #######################
-EnsemblLoc <- paste0(baseLoc,'/1.Reference_annotation/')
-command <- paste0('mkdir ',EnsemblLoc)
-#system(command)
-
-# Get reference genome file
-setwd(EnsemblLoc)
-command <- paste0("wget ",referenceLink," &")
-#system(command)
-
-# Get gene annotation file
-command <- paste0("wget ",GeneLink," &")
-#system(command)
-setwd(baseLoc)
-######################## Trimmomatic #########################
+####################### Define Fuction #######################
 fastqName <- list.files(inputfileLoc,pattern="\\.fastq\\.gz")
-sampleName <- substr(fastqName[1],1,str_locate(fastqName[1],'_')-1)
+sampleNum <- length(fastqName)%/%2
 
+setThread <- function(thread){
+  if(!is.null(thread)){
+    return(thread)
+  }
+  
+  if(Current_CPU_remain_n < 50){
+    thread <- 16%/%sampleNum
+    print("Threads number is changed : 16")
+  }else{
+    thread <- 32%/%sampleNum
+    print("Threads number is unchanged : 32")
+  }
+  
+  return(thread)
+}
+
+####################### Parallel #######################
+#MAXthread <- detectCores() # 쓰레드 수 확인
+MAXthread <- sampleNum*2 # 12
+library(doParallel) # 백엔드 생성
+cl=makeCluster(MAXthread %/% as.numeric(thread))
+registerDoParallel(cl)
+
+library(foreach)
+
+####################### 1.Download reference file & gene annotation file #######################
+EnsemblLoc <- paste0(baseLoc,'/1.Reference_annotation/')
+# command <- paste0('mkdir ',EnsemblLoc)
+# #system(command)
+# 
+# Get reference genome file
+# setwd(EnsemblLoc)
+# command <- paste0("wget ",referenceLink," &")
+# #system(command)
+# referenceFile <- paste0(EnsemblLoc, list.files(EnsemblLoc, pattern = '\\.fa\\.gz'))
+# system(paste0('gzip -d ',referenceFile))
+# 
+# 
+# 
+# # Get gene annotation file
+# command <- paste0("wget ",GeneLink," &")
+# #system(command)
+# gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf.\\gz'))
+# system(paste0('gzip -d ',gtfFile))
+# 
+# setwd(baseLoc)
+######################## 2.Trimmomatic #########################
 TrimOutLoc <- paste0(baseLoc,'/2.Trimming_Trimmomatic/')
-command <- paste0('mkdir ',TrimOutLoc)
-#system(command)
 
-inputfile1 <- paste0(inputfileLoc,fastqName[1])
-inputfile2 <- paste0(inputfileLoc,fastqName[2])
-outputfile1 <- paste0(TrimOutLoc,sampleName,'_forward_paired.fastq.gz')
-outputfile2 <- paste0(TrimOutLoc,sampleName,'_forward_unpaired.fastq.gz')
-outputfile3 <- paste0(TrimOutLoc,sampleName,'_reverse_paired.fastq.gz')
-outputfile4 <- paste0(TrimOutLoc,sampleName,'_reverse_unpaired.fastq.gz')
+sampleName <- c()
+for(i in 1:sampleNum){
+  temp <- substr(fastqName[2*i],1,str_locate(fastqName[2*i],'_')-1)
+  sampleName <- append(sampleName,temp)
+}
 
-Trimcommand <- paste0("java -jar ",TrimPrgmLoc," ",Endtype," -threads ",thread," -phred33 ", 
-                      inputfile1,' ',inputfile2,' ',
-       outputfile1,' ', outputfile2,' ',outputfile3,' ',outputfile4,' ',
-       "ILLUMINACLIP:",AdapterLoc,":2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36")
-#system(Trimcommand)
 
-######################## Quality Control by fastQC ########################
+if(dir.exists(TrimOutLoc) && (length(list.files(TrimOutLoc))!=0)){   #dir 이름 & 내용물 있음
+  print("!!Trimming exist!!")
+  }else{
+    
+    if(!dir.exists(TrimOutLoc)){
+      command <- paste0('mkdir ',TrimOutLoc)
+      system(command)
+    }
+    
+    print("-------------START TRIMMING-------------")
+    
+    thread <- setThread(thread)
+    
+    Trimcommand <- c()
+    for(i in 1:sampleNum){
+      inputfile1 <- paste0(inputfileLoc,'/',fastqName[2*i-1])
+      inputfile2 <- paste0(inputfileLoc,'/',fastqName[2*i])
+      
+      outputfile1 <- paste0(TrimOutLoc,sampleName[i],'_forward_paired.fastq.gz')
+      outputfile2 <- paste0(TrimOutLoc,sampleName[i],'_forward_unpaired.fastq.gz')
+      outputfile3 <- paste0(TrimOutLoc,sampleName[i],'_reverse_paired.fastq.gz')
+      outputfile4 <- paste0(TrimOutLoc,sampleName[i],'_reverse_unpaired.fastq.gz')
+      
+      temp <- paste0("java -jar ",TrimPrgmLoc," ",Endtype," -threads ",thread," -phred33 ", 
+                     inputfile1,' ',inputfile2,' ',
+                     outputfile1,' ', outputfile2,' ',outputfile3,' ',outputfile4,' ',
+                     "ILLUMINACLIP:",AdapterLoc,":2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36")
+      Trimcommand <- append(Trimcommand, temp)
+    }
+    
+    foreach(i = 1:sampleNum) %dopar% {
+      system(Trimcommand[i])
+    }   
+  }
+
+######################## 3.Quality Control by fastQC ########################
 QCOutLoc <- paste0(baseLoc,'/3.QC_fastQC/')
-command <- paste0('mkdir ',QCOutLoc)
-#system(command)
 
 seqfile1 <- paste0(TrimOutLoc,list.files(TrimOutLoc,pattern = 'forward_paired'))
 seqfile2 <- paste0(TrimOutLoc,list.files(TrimOutLoc,pattern = 'reverse_paired'))
 
-QCcommand <- paste0(QCPrgmLoc,' -o ',QCOutLoc,' -t ',thread," ",seqfile1," ",seqfile2 )
-#system(QCcommand)
+if(dir.exists(QCOutLoc)&& (length(list.files(QCOutLoc))!=0)){
+  print("!!fastQC exist!!")
+}else{
+  if(!dir.exists(QCOutLoc)){
+    command <- paste0('mkdir ',QCOutLoc)
+    system(command)
+  }
+  print("-------------START FASTQC-------------")
 
-######################## HISAT & SAM TO BAM########################
-HisatOutLoc <- paste0(baseLoc,'/4.HISAT/')
-command <- paste0('mkdir ',HisatOutLoc)
-system(command)
-BamOutLoc <- paste0(baseLoc,'/5.BAM/')
-command <- paste0('mkdir ',BamOutLoc)
-system(command)
+  thread <- setThread(thread)
 
-referenceFile <- paste0(EnsemblLoc, list.files(EnsemblLoc, pattern = '\\.fa\\.gz'))
-system(paste0('gzip -d ',referenceFile))
+  QCcommand <- c()
+  for(i in 1:sampleNum){
+    temp <- paste0(QCPrgmLoc,' -o ',QCOutLoc,' -t ',thread," ",seqfile1[i]," ",seqfile2[i] )
+    QCcommand <- append(QCcommand, temp)
+  }
+  foreach(i = 1:sampleNum) %dopar% {
+    system(QCcommand[i])
+  }
+}
+
+######################## 4.HISAT & 5.SAM TO BAM########################
 referenceFile <- paste0(EnsemblLoc, list.files(EnsemblLoc, pattern = '\\.fa'))
 
-#command <- paste0(HISATPrgmLoc,'-build -p 16 ',referenceFile,' ',paste0(HisatOutLoc,'genome'))
-#system(command)
+HisatOutLoc <- paste0(baseLoc,'/4.HISAT/')
 
-genome <- paste0(HisatOutLoc,'genome')
-HISATcommand <- paste0(HISATPrgmLoc," -p ",thread," -x ",genome," -1 ",seqfile1," -2 ",seqfile2,
-                       " | ",SamtoolPrgmLoc," sort -@ ",thread," -o ",paste0(BamOutLoc,sampleName,".bam"))
+if(dir.exists(HisatOutLoc) && (length(list.files(HisatOutLoc))!=0)){
+  print("!!HISAT exist!!")
+}else{
+  if(!dir.exists(HisatOutLoc)){
+    command <- paste0('mkdir ',HisatOutLoc)
+    system(command)
+  }
+  print("-------------START HISAT-------------")
 
-#2> ",Hisat2_id[d],".log | ",PutYouSamtools_Pro_Dir," sort -@ ",PutYourThreadsNumber," -o ",PutYourSamtools_Sort_Dir,"/",Hisat2_id[d],".Sorted.bam &")
-#system(HISATcommand)
+  thread <- setThread(thread)
 
-bamFile <- paste0(BamOutLoc, list.files(BamOutLoc, pattern = '\\.bam'))
-sortBamcommand <- paste0(SamtoolPrgmLoc,' sort ',bamFile,' -o ',paste0(BamOutLoc,sampleName,"_sorted.bam"))
+  Refcommand <- paste0(HISATPrgmLoc,'-build -p 16 ',referenceFile,' ',paste0(HisatOutLoc,'genome'))
+  system(Refcommand)
+}
 
-#system(sortBamcommand)
+BamOutLoc <- paste0(baseLoc,'/5.BAM/')
 
-######################## Feature Count ########################
+if(dir.exists(BamOutLoc)&& (length(list.files(BamOutLoc))!=0)){
+  print("!!BAM exist!!")
+}else{
+  if(!dir.exists(BamOutLoc)){
+    command <- paste0('mkdir ',BamOutLoc)
+    system(command)
+  }
+  print("-------------START BAM-------------")
+
+  genome <- paste0(HisatOutLoc,'genome')
+
+  HISATcommand <- c()
+  for(i in 1:sampleNum){
+    temp <- paste0(HISATPrgmLoc," -p ",thread," -x ",genome," -1 ",seqfile1[i]," -2 ",seqfile2[i],
+                   " | ",SamtoolPrgmLoc," sort -@ ",thread," -o ",paste0(BamOutLoc,sampleName[i],".bam"))
+
+    HISATcommand <- append(HISATcommand,temp)
+  }
+
+  foreach(i= 1:sampleNum) %dopar% {
+    system(HISATcommand[i])
+  }
+
+  print("-------------START SORTED BAM-------------")
+
+  bamFile <- paste0(BamOutLoc, list.files(BamOutLoc, pattern = '\\.bam'))
+  
+  sortBamcommand <- c()
+  for(i in 1:sampleNum){
+    temp <- paste0(SamtoolPrgmLoc,' sort ',bamFile[i],' -o ',paste0(BamOutLoc,sampleName[i],"_sorted.bam"))
+    sortBamcommand <- append(sortBamcommand, temp)
+  }
+
+  foreach(i= 1:sampleNum) %dopar% {
+    system(sortBamcommand[i])
+  }
+
+}
+
+######################## 6.Feature Count ########################
+thread <- setThread(thread)
 FeatureCountOutLoc <- paste0(baseLoc,'/6.FeatureCount/')
-command <- paste0('mkdir ',FeatureCountOutLoc)
-system(command)
 
-FeatureCountFile <- paste0(FeatureCountOutLoc,sampleName,'_counts.txt')
-sortedBamFile <- paste0(BamOutLoc,list.files(BamOutLoc,pattern = '_sorted\\.bam'))
+if(dir.exists(FeatureCountOutLoc) && (length(list.files(FeatureCountOutLoc))!=0)){
+  print("!!FeatureCount exist!!")
+}else{
+  if(!dir.exists(FeatureCountOutLoc)){
+    command <- paste0('mkdir ',FeatureCountOutLoc)
+    system(command)
+  }
 
-gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf.\\gz'))
-system(paste0('gzip -d ',gtfFile)) 
-gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf'))
+  print("-------------START FEARUTECOUNT-------------")
 
-FeatureCountcommand <- paste0(FeatureCountPrgmLoc,' -T ',thread,' -p -a ',gtfFile,' -t exon -g gene_id -s 0 -o ',FeatureCountFile,' ', sortedBamFile)
-system(FeatureCountcommand)
+  FeatureCountFile <- paste0(FeatureCountOutLoc,sampleName,'_counts.txt')
+  sortedBamFile <- paste0(BamOutLoc,list.files(BamOutLoc,pattern = '_sorted\\.bam'))
+
+  gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf'))
+
+  FeatureCountcommand <- c()
+
+  for(i in 1:sampleNum){
+    temp <- paste0(FeatureCountPrgmLoc,' -T ',thread,' -p -a ',gtfFile,' -t exon -g gene_id -s 0 -o ',FeatureCountFile[i],' ', sortedBamFile[i])
+    FeatureCountcommand <- append(FeatureCountcommand,temp)
+  }
+
+  foreach(i= 1:sampleNum) %dopar% {
+    system(FeatureCountcommand[i])
+  }
+
+}
+
+
 
 
 
