@@ -12,33 +12,45 @@ library(stringr)
 ############## Get Argument ##############
 Args <- commandArgs(trailingOnly = T)
 
- # Args <- paste0('time Rscript khyPipeline.R',' -Fa http://ftp.ensembl.org/pub/release-105/fasta/gallus_gallus/dna/gallus_gallus.GRCg6a.dna.toplevel.fa.gz',
- #                ' -Gtf http://ftp.ensembl.org/pub/release-105/gtf/gallus_gallus/Gallus_gallus.GRCg6a.105.gtf.gz',
- #                ' -Spc Gallus_gallus -Input /disk4/bikhy/oneSampleTest -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar ',
+ # Args <- paste0('time Rscript khyPipeline.R',' --Fa http://ftp.ensembl.org/pub/release-105/fasta/gallus_gallus/dna/gallus_gallus.GRCg6a.dna.toplevel.fa.gz',
+ #                ' --Gtf http://ftp.ensembl.org/pub/release-105/gtf/gallus_gallus/Gallus_gallus.GRCg6a.105.gtf.gz',
+ #                ' --Spc Gallus_gallus -Input /disk4/bikhy/oneSampleTest -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar ',
  #                 '-End PE --t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc ',
  #                 '-HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools ',
  #                 '-Featurecount /program/subread/bin/featureCounts')
  #Args <- unlist(strsplit(Args,' '))
  
-# Args <- 'time Rscript khyPipeline.R -Input /disk4/bikhy/SRRdata -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar -End PE --t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc -HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools -Featurecount /program/subread/bin/featureCounts'
-# Args <- unlist(strsplit(Args,' '))
+Args <- 'time Rscript khyPipeline.R --Fa 1.Reference_annotation --Gtf 1.Reference_annotation -Input /disk4/bikhy/oneSampleTest -Base /disk4/bikhy -Trim /program/Trimmomatic/trimmomatic-0.39.jar -End PE --t 8 -Adapt /program/Trimmomatic/adapters/TruSeq3-PE.fa -QC /program/FastQC/fastqc -HISAT /program/HISAT2/hisat2 -Samtool /program/samtools/bin/samtools -Featurecount /program/subread/bin/featureCounts'
+Args <- unlist(strsplit(Args,' '))
 
-if(!'-Fa' %in% Args){
+if(!'--Fa' %in% Args){
   print('no Fa !')
 }else{
-  referenceLink <- Args[which(Args=='-Fa')+1]
+  FaFileLoc <- Args[which(Args=='--Fa')+1]
 }
 
-if(!'-Gtf' %in% Args){
+if(!'--Gtf' %in% Args){
   print('no Gtf !')
 }else{
-  GeneLink <- Args[which(Args=='-Gtf')+1]
+  GtfFileLoc <- Args[which(Args=='--Gtf')+1]
 }
 
-if(!'-Spc' %in% Args){
-  print('no Spc !')
+if('--EblFa' %in% Args){
+  referenceLink <- Args[which(Args=='--EblFa')+1]
 }else{
-  species <- Args[which(Args=='-Spc')+1]
+  referenceLink <- NULL
+}
+
+if('--EblGtf' %in% Args){
+  GeneLink <- Args[which(Args=='--EblGtf')+1]
+}else{
+  GeneLink <- NULL
+}
+
+if('--Spc' %in% Args){
+  species <- Args[which(Args=='--Spc')+1]
+}else{
+  species <- NULL
 }
 
 if(!'-Input' %in% Args){
@@ -137,26 +149,38 @@ registerDoParallel(cl)
 library(foreach)
 
 ####################### 1.Download reference file & gene annotation file #######################
-EnsemblLoc <- paste0(baseLoc,'/1.Reference_annotation/')
-# command <- paste0('mkdir ',EnsemblLoc)
-# #system(command)
-# 
-# Get reference genome file
-# setwd(EnsemblLoc)
-# command <- paste0("wget ",referenceLink," &")
-# #system(command)
-# referenceFile <- paste0(EnsemblLoc, list.files(EnsemblLoc, pattern = '\\.fa\\.gz'))
-# system(paste0('gzip -d ',referenceFile))
-# 
-# 
-# 
-# # Get gene annotation file
-# command <- paste0("wget ",GeneLink," &")
-# #system(command)
-# gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf.\\gz'))
-# system(paste0('gzip -d ',gtfFile))
-# 
-# setwd(baseLoc)
+RefAnnLoc <- paste0(baseLoc,'/1.Reference_annotation/')
+
+if(!is.null(referenceLink) | !is.null(GeneLink)){
+  command <- paste0('mkdir ',RefAnnLoc)
+  system(command)
+ }
+ 
+if(!is.null(referenceLink)){
+  setwd(RefAnnLoc)
+  command <- paste0("wget ",referenceLink," &")
+  system(command)
+    
+  referenceFile <- paste0(RefAnnLoc, list.files(RefAnnLoc, pattern = '\\.fa\\.gz'))
+  system(paste0('gzip -d ',referenceFile))
+    
+  FaFileLoc <- paste0(RefAnnLoc, list.files(RefAnnLoc,pattern = '\\.fa'))
+  setwd(baseLoc)
+}
+  
+if(!is.null(GeneLink)){
+  setwd(RefAnnLoc)
+  command <- paste0("wget ",GeneLink," &")
+  system(command)
+    
+  gtfFile <- paste0(RefAnnLoc,list.files(RefAnnLoc,pattern = '\\.gtf.\\gz'))
+  system(paste0('gzip -d ',gtfFile))
+    
+  GtfFileLoc <- paste0(RefAnnLoc, list.files(RefAnnLoc,pattern = '\\.gtf'))
+  setwd(baseLoc)
+}
+
+setwd(baseLoc)
 ######################## 2.Trimmomatic #########################
 TrimOutLoc <- paste0(baseLoc,'/2.Trimming_Trimmomatic/')
 
@@ -230,7 +254,7 @@ if(dir.exists(QCOutLoc)&& (length(list.files(QCOutLoc))!=0)){
 }
 
 ######################## 4.HISAT & 5.SAM TO BAM########################
-referenceFile <- paste0(EnsemblLoc, list.files(EnsemblLoc, pattern = '\\.fa'))
+referenceFile <- FaFileLoc
 
 HisatOutLoc <- paste0(baseLoc,'/4.HISAT/')
 
@@ -307,7 +331,7 @@ if(dir.exists(FeatureCountOutLoc) && (length(list.files(FeatureCountOutLoc))!=0)
   FeatureCountFile <- paste0(FeatureCountOutLoc,sampleName,'_counts.txt')
   sortedBamFile <- paste0(BamOutLoc,list.files(BamOutLoc,pattern = '_sorted\\.bam'))
 
-  gtfFile <- paste0(EnsemblLoc,list.files(EnsemblLoc,pattern = '\\.gtf'))
+  gtfFile <- GtfFileLoc
 
   FeatureCountcommand <- c()
 
